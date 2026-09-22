@@ -1,7 +1,7 @@
 {
   "name": "paseo-vitals",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "description": "A focused host, Paseo process, agent, and Docker monitor for Paseo.",
   "repository": {
@@ -11,7 +11,13 @@
   "homepage": "https://github.com/tomgrin10/paseo-vitals#readme",
   "bugs": "https://github.com/tomgrin10/paseo-vitals/issues",
   "author": "Tom Gringauz",
-  "keywords": ["paseo", "paseo-plugin", "monitoring", "docker", "linux"],
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "monitoring",
+    "docker",
+    "linux"
+  ],
   "files": [
     "paseo-plugin.json",
     "index.client.tsx",

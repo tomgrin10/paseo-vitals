@@ -23,13 +23,13 @@ lines and other process environment values are never returned to the client.
 Install from npm on Paseo 0.9.0 or newer:
 
 ```sh
-paseo plugin install npm:paseo-vitals@0.1.0
+paseo plugin install npm:paseo-vitals
 ```
 
 Paseo 0.8 can install the same plugin from Git:
 
 ```sh
-paseo plugin add tomgrin10/paseo-vitals --ref v0.1.0
+paseo plugin add tomgrin10/paseo-vitals
 ```
 
 For local development:

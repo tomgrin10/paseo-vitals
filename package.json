@@ -1,0 +1,39 @@
+{
+  "name": "paseo-vitals",
+  "type": "module",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "A focused host, Paseo process, agent, and Docker monitor for Paseo.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomgrin10/paseo-vitals.git"
+  },
+  "homepage": "https://github.com/tomgrin10/paseo-vitals#readme",
+  "bugs": "https://github.com/tomgrin10/paseo-vitals/issues",
+  "author": "Tom Gringauz",
+  "keywords": ["paseo", "paseo-plugin", "monitoring", "docker", "linux"],
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types server/collect.test.ts",
+    "verify": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.8.0",
+    "@getpaseo/plugin": "0.8.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.10.2",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  }
+}

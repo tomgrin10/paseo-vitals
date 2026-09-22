@@ -4,8 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { PaseoAgent } from "@getpaseo/client";
+import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { VitalsSnapshot } from "../shared/vitals.ts";
+
+type PaseoApi = PluginHandlerContext["paseo"];
+type PaseoAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
 
 const execFileAsync = promisify(execFile);
 const PAGE_BYTES = 4096;

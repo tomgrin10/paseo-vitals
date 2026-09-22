@@ -1,7 +1,7 @@
 {
   "name": "paseo-vitals",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "description": "A focused host, Paseo process, agent, and Docker monitor for Paseo.",
   "repository": {

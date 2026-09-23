@@ -1,7 +1,8 @@
 # paseo-vitals
 
-[![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.8.0-8A63D2?style=for-the-badge)](https://paseo.sh)
+[![npm version](https://img.shields.io/npm/v/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
 [![npm downloads](https://img.shields.io/npm/dm/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
+[![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.8.0-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-vitals?style=for-the-badge&color=2563eb)](LICENSE)
 
 A small Paseo sidebar dashboard for answering one question: how is this development VM doing?
@@ -42,3 +43,11 @@ paseo plugin install "$PWD"
 
 Open **Host vitals** from Paseo's sidebar. The dashboard refreshes every five seconds while mounted.
 Docker failure is non-fatal, and process-level detail degrades gracefully on non-Linux hosts.
+
+## More Paseo plugins
+
+Also available from [Tom Gringauz](https://github.com/tomgrin10):
+
+- [Defer](https://www.npmjs.com/package/paseo-defer) — Schedule messages to agents for later delivery.
+- [Graphite](https://www.npmjs.com/package/paseo-graphite) — Monitor Graphite stacks and PR action state.
+- [Smart Session](https://www.npmjs.com/package/paseo-smart-session) — Context-aware compaction and usage insights for long-running agents.

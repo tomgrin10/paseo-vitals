@@ -19,4 +19,5 @@
 - Run `npm ci`, `npm run verify`, and `npm pack --dry-run` after changes.
 - Do not restart the Paseo daemon. Use `paseo plugin reload paseo-vitals` for an installed development copy.
 - Publish only from a clean `main`, after confirming the packed file list and auditing it for secrets.
-- Tag the exact published commit as `vX.Y.Z`; never move a published tag.
+- Tag the exact release commit as `vX.Y.Z` and push the tag. `.github/workflows/publish-npm.yml` verifies that the tag matches `package.json`, reruns the release checks, inspects the package, and publishes through npm Trusted Publishing. Do not run `npm publish` manually except to recover from a diagnosed workflow failure.
+- Wait for the publish workflow and npm registry propagation before creating the GitHub release and updating an installed copy. Never move a published tag.

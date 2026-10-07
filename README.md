@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
 [![npm downloads](https://img.shields.io/npm/dm/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
-[![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.8.0-8A63D2?style=for-the-badge)](https://paseo.sh)
+[![Paseo](https://img.shields.io/badge/Paseo-plugin-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-vitals?style=for-the-badge&color=2563eb)](LICENSE)
 
 A small Paseo sidebar dashboard for answering one question: how is this development VM doing?
@@ -25,16 +25,10 @@ lines and other process environment values are never returned to the client.
 
 ## Install
 
-Install from npm on Paseo 0.9.0 or newer:
+Install from npm using the latest Paseo release:
 
 ```sh
 paseo plugin install paseo-vitals
-```
-
-Paseo 0.8 can install the same plugin from Git:
-
-```sh
-paseo plugin add tomgrin10/paseo-vitals
 ```
 
 For local development:
@@ -52,6 +46,7 @@ Docker failure is non-fatal, and process-level detail degrades gracefully on non
 
 Also available from [Tom Gringauz](https://github.com/tomgrin10):
 
-- [Defer](https://www.npmjs.com/package/paseo-defer) — Schedule messages to agents for later delivery.
-- [Graphite](https://www.npmjs.com/package/paseo-graphite) — Monitor Graphite stacks and PR action state.
-- [Smart Session](https://www.npmjs.com/package/paseo-smart-session) — Context-aware compaction and usage insights for long-running agents.
+- [Defer](https://github.com/tomgrin10/paseo-defer) — Schedule messages to agents for later delivery.
+- [Graphite](https://github.com/tomgrin10/paseo-graphite) — Monitor Graphite stacks and PR action state.
+- [Smart Session](https://github.com/tomgrin10/paseo-smart-session) — Context-aware compaction and usage insights for long-running agents.
+- [Send to Paseo](https://github.com/tomgrin10/send-to-paseo) — Send GitHub and Graphite PRs to Paseo from Chrome.

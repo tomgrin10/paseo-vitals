@@ -7,6 +7,10 @@
 
 A small Paseo sidebar dashboard for answering one question: how is this development VM doing?
 
+![Host vitals in Paseo showing live CPU, RAM, Docker, and per-agent memory usage](docs/images/host-vitals.png)
+
+Live usage on a Linux Paseo host. Private host addresses are redacted.
+
 It shows:
 
 - host CPU, load, uptime, RAM detail, swap, and root-disk usage;

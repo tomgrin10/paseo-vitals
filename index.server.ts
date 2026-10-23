@@ -1,3 +1,4 @@
+import { displayPreferences } from "./shared/display";
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
 
 import { collectVitals } from "./server/collect.ts";
@@ -7,6 +8,7 @@ type PaseoApi = PluginHandlerContext["paseo"];
 type PaseoAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
 
 export default function contribute(server: PluginServerContext) {
+  server.registerSettings(displayPreferences);
   server.handle(vitalsSnapshot, async (_input, { paseo }) => {
     let agents: PaseoAgent[] = [];
     try {

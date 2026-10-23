@@ -1,10 +1,12 @@
+import { contributeDisplay } from "./client/display";
+import { withNavigation } from "./client/navigation";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 
 import { VitalsSurface } from "./client/surface";
 
 export default function contribute(client: PluginClientContext) {
-  client.addSurface("dashboard", VitalsSurface);
-  client.addSidebarItem({
+  client.addSurface("dashboard", withNavigation(VitalsSurface, client, "dashboard"));
+  const removeDisplay = contributeDisplay(client, {
     id: "vitals",
     title: "Host vitals",
     icon: "Gauge",
@@ -20,5 +22,5 @@ export default function contribute(client: PluginClientContext) {
       openSurface("dashboard");
     },
   });
-  return () => {};
+  return () => { removeDisplay(); };
 }

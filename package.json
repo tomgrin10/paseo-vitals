@@ -32,8 +32,8 @@
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {
-    "@getpaseo/client": "0.8.0",
-    "@getpaseo/plugin": "0.8.0",
+    "@getpaseo/client": "0.11.0",
+    "@getpaseo/plugin": "0.11.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.10.2",
     "@types/react": "~19.2.0",

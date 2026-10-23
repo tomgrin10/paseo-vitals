@@ -16,7 +16,8 @@
     "paseo-plugin",
     "monitoring",
     "docker",
-    "linux"
+    "linux",
+    "macos"
   ],
   "files": [
     "paseo-plugin.json",

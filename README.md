@@ -19,9 +19,12 @@ It shows:
 - Docker container CPU, cgroup memory, state, PIDs, network I/O, and block I/O;
 - the host's largest processes by RSS.
 
-The plugin reads Linux `/proc` directly and invokes `docker stats` at most once per cached refresh.
-It reads only the `PASEO_AGENT_ID` environment entry needed to attribute a process tree; command
-lines and other process environment values are never returned to the client.
+On Linux the plugin reads `/proc` directly. On macOS it uses `ps`, `vm_stat`, and
+`sysctl vm.swapusage`, and reports RAM the way Activity Monitor does: app memory, wired memory,
+and compressed memory count as used, and cached files count as available. It invokes
+`docker stats` at most once per cached refresh. It reads only the `PASEO_AGENT_ID` environment
+entry needed to attribute a process tree; command lines and other process environment values are
+never returned to the client.
 
 ## Install
 
@@ -34,7 +37,7 @@ paseo plugin install paseo-vitals
 ## Use
 
 Open **Host vitals** from Paseo's sidebar. The dashboard refreshes every five seconds while mounted.
-Docker failure is non-fatal, and process-level detail degrades gracefully on non-Linux hosts.
+Docker failure is non-fatal, and process-level detail degrades gracefully on hosts other than Linux and macOS.
 
 ## Development
 

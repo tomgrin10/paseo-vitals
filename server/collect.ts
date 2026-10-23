@@ -90,7 +90,46 @@ function readAgentId(environ: Buffer): string | null {
   return null;
 }
 
+// ps reports cumulative CPU time as [[dd-]hh:]mm:ss[.cc]; convert it to the same ticks as /proc.
+export function parseCpuTime(value: string): number {
+  const match = value.trim().match(/^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/);
+  if (!match) return 0;
+  const [, days = "0", hours = "0", minutes, seconds] = match;
+  const total = Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
+  return Math.round(total * CLOCK_TICKS);
+}
+
+export function parsePsProcesses(text: string): ProcessRow[] {
+  const rows: ProcessRow[] = [];
+  for (const line of text.split("\n")) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    rows.push({
+      pid,
+      ppid: Number(match[2]),
+      name: path.basename(match[5]!.trim()).slice(0, 80) || `pid ${pid}`,
+      rssBytes: Number(match[3]) * 1024,
+      cpuTicks: parseCpuTime(match[4]!),
+      agentId: null,
+    });
+  }
+  return rows;
+}
+
 async function readProcesses(): Promise<ProcessRow[]> {
+  if (process.platform === "darwin") {
+    try {
+      const { stdout } = await execFileAsync("ps", ["-axww", "-o", "pid=,ppid=,rss=,time=,comm="], {
+        timeout: 4_000,
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      return parsePsProcesses(stdout);
+    } catch {
+      // Keep memory, disk, and Docker. The missing daemon warning reports the process gap.
+      return [];
+    }
+  }
   if (process.platform !== "linux") return [];
   const entries = await fs.readdir("/proc", { withFileTypes: true });
   const pids = entries
@@ -128,7 +167,10 @@ function findDaemonPid(rows: ProcessRow[]): number | null {
     if (cursor.name === "Paseo Daemon") return cursor.pid;
     cursor = byPid.get(cursor.ppid) ?? null;
   }
-  return rows.find((row) => row.name === "Paseo Daemon")?.pid ?? null;
+  const named = rows.find((row) => row.name === "Paseo Daemon");
+  if (named) return named.pid;
+  // The daemon spawns each plugin process directly, so its parent is the daemon.
+  return byPid.has(process.ppid) ? process.ppid : null;
 }
 
 function descendantsOf(rootPid: number | null, rows: ProcessRow[]): Set<number> {
@@ -150,14 +192,37 @@ function descendantsOf(rootPid: number | null, rows: ProcessRow[]): Set<number> 
   return result;
 }
 
+// `ps -E` appends the environment to the command line. Keep only the agent ID.
+export function parsePsAgentIds(text: string): Map<number, string> {
+  const ids = new Map<number, string>();
+  for (const line of text.split("\n")) {
+    const pid = line.trim().match(/^(\d+)\s/);
+    const id = line.match(/(?:^|\s)PASEO_AGENT_ID=(\S+)/);
+    if (pid && id) ids.set(Number(pid[1]), id[1]!);
+  }
+  return ids;
+}
+
 async function attachAgentIds(rows: ProcessRow[], paseoPids: Set<number>): Promise<void> {
-  await Promise.all(rows.filter((row) => paseoPids.has(row.pid)).map(async (row) => {
-    try {
-      row.agentId = readAgentId(await fs.readFile(`/proc/${row.pid}/environ`));
-    } catch {
-      // A short-lived process may disappear between /proc reads.
+  if (process.platform === "darwin") {
+    if (paseoPids.size > 0) {
+      // ps exits non-zero when a listed process has already exited, but still prints the others.
+      const stdout = await execFileAsync("ps", ["-Eww", "-o", "pid=,command=", "-p", [...paseoPids].join(",")], {
+        timeout: 4_000,
+        maxBuffer: 16 * 1024 * 1024,
+      }).then((result) => result.stdout, (error: { stdout?: string }) => error.stdout ?? "");
+      const ids = parsePsAgentIds(stdout);
+      for (const row of rows) row.agentId = ids.get(row.pid) ?? null;
     }
-  }));
+  } else {
+    await Promise.all(rows.filter((row) => paseoPids.has(row.pid)).map(async (row) => {
+      try {
+        row.agentId = readAgentId(await fs.readFile(`/proc/${row.pid}/environ`));
+      } catch {
+        // A short-lived process may disappear between /proc reads.
+      }
+    }));
+  }
 
   const byPid = new Map(rows.map((row) => [row.pid, row]));
   for (const row of rows) {
@@ -226,9 +291,48 @@ function sumCpu(rows: ProcessRow[], byPid: Map<number, number>): number | null {
   return found ? percent(total) : null;
 }
 
+// Mirrors Activity Monitor: used = app + wired + compressed; cached files are reclaimable.
+export function parseVmStat(text: string, totalBytes: number, swapUsage: string) {
+  const pageBytes = Number(text.match(/page size of (\d+) bytes/)?.[1] ?? 4096);
+  const pages = new Map<string, number>();
+  for (const line of text.split("\n")) {
+    const match = line.match(/^"?([^:"]+)"?:\s+(\d+)\.?$/);
+    if (match) pages.set(match[1]!.trim(), Number(match[2]) * pageBytes);
+  }
+  const get = (key: string) => pages.get(key) ?? 0;
+  const appBytes = Math.max(0, get("Anonymous pages") - get("Pages purgeable"));
+  const usedBytes = Math.min(totalBytes, appBytes + get("Pages wired down") + get("Pages occupied by compressor"));
+  // sysctl prints sizes such as "2048.00M".
+  const swapBytes = (key: string) => parseByteSize(`${swapUsage.match(new RegExp(`${key} = (\\S+)`))?.[1] ?? "0"}B`);
+  const swapTotalBytes = swapBytes("total");
+  const swapUsedBytes = swapBytes("used");
+  return {
+    totalBytes,
+    usedBytes,
+    availableBytes: totalBytes - usedBytes,
+    freeBytes: get("Pages free"),
+    cacheBytes: get("File-backed pages") + get("Pages purgeable"),
+    anonymousBytes: appBytes,
+    swapTotalBytes,
+    swapUsedBytes,
+  };
+}
+
 async function readMemory() {
   if (process.platform === "linux") {
     return parseMeminfo(await fs.readFile("/proc/meminfo", "utf8"));
+  }
+  if (process.platform === "darwin") {
+    try {
+      const options = { timeout: 4_000 };
+      const [vmStat, swap] = await Promise.all([
+        execFileAsync("vm_stat", [], options),
+        execFileAsync("sysctl", ["-n", "vm.swapusage"], options).catch(() => ({ stdout: "" })),
+      ]);
+      return parseVmStat(vmStat.stdout, os.totalmem(), swap.stdout);
+    } catch {
+      // Fall through to Node's free-page count.
+    }
   }
   const totalBytes = os.totalmem();
   const availableBytes = os.freemem();
@@ -245,20 +349,24 @@ async function readMemory() {
 }
 
 async function readDisk(): Promise<VitalsSnapshot["disk"]> {
+  // macOS mounts a small sealed system volume at "/"; user data lives on the Data volume.
+  const darwin = process.platform === "darwin";
+  const diskPath = darwin ? "/System/Volumes/Data" : "/";
   try {
-    const stats = await fs.statfs("/");
+    const stats = await fs.statfs(diskPath);
     const totalBytes = stats.blocks * stats.bsize;
     const availableBytes = stats.bavail * stats.bsize;
-    const usedBytes = Math.max(0, totalBytes - stats.bfree * stats.bsize);
+    // APFS volumes share one container, so count space used by every volume in it.
+    const usedBytes = Math.max(0, totalBytes - (darwin ? stats.bavail : stats.bfree) * stats.bsize);
     return {
-      path: "/",
+      path: diskPath,
       totalBytes,
       usedBytes,
       availableBytes,
       usedPercent: totalBytes > 0 ? percent(usedBytes / totalBytes * 100) : 0,
     };
   } catch {
-    return { path: "/", totalBytes: 0, usedBytes: 0, availableBytes: 0, usedPercent: 0 };
+    return { path: diskPath, totalBytes: 0, usedBytes: 0, availableBytes: 0, usedPercent: 0 };
   }
 }
 
@@ -297,9 +405,16 @@ function parseJsonLines<T>(text: string): T[] {
   return values;
 }
 
+// Apps opened from the macOS Dock get a minimal PATH that misses Docker Desktop's CLI.
+function dockerEnv(): NodeJS.ProcessEnv {
+  if (process.platform !== "darwin") return process.env;
+  const dirs = [process.env.PATH, "/usr/local/bin", "/opt/homebrew/bin", path.join(os.homedir(), ".docker", "bin")];
+  return { ...process.env, PATH: dirs.filter(Boolean).join(":") };
+}
+
 async function readDocker(): Promise<VitalsSnapshot["docker"]> {
   try {
-    const options = { timeout: 4_000, maxBuffer: 4 * 1024 * 1024 };
+    const options = { timeout: 4_000, maxBuffer: 4 * 1024 * 1024, env: dockerEnv() };
     const [statsResult, psResult] = await Promise.all([
       execFileAsync("docker", ["stats", "--no-stream", "--all", "--format", "{{json .}}"], options),
       execFileAsync("docker", ["ps", "--all", "--format", "{{json .}}"], options),
@@ -363,7 +478,9 @@ async function collectUncached(agents: PaseoAgent[]): Promise<VitalsSnapshot> {
   const paseoPids = descendantsOf(daemonPid, rows);
   await attachAgentIds(rows, paseoPids);
 
-  if (process.platform !== "linux") warnings.push("Per-process and agent memory require a Linux host.");
+  if (process.platform !== "linux" && process.platform !== "darwin") {
+    warnings.push("Per-process and agent memory require a Linux or macOS host.");
+  }
   if (daemonPid === null) warnings.push("The Paseo daemon process could not be identified.");
 
   const paseoRows = rows.filter((row) => paseoPids.has(row.pid));

@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
 [![npm downloads](https://img.shields.io/npm/dm/paseo-vitals?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/paseo-vitals)
-[![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.10.1-8A63D2?style=for-the-badge)](https://paseo.sh)
+[![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.14.0-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-vitals?style=for-the-badge&color=2563eb)](LICENSE)
 
 A small Paseo sidebar dashboard for answering one question: how is this development VM doing?
@@ -51,6 +51,16 @@ paseo plugin install paseo-vitals
 ## Navigation and display
 
 Open this plugin from Command-K or its sidebar entry. **Overview** and **Display settings** link the main view and settings directly, without opening the Plugins settings page. Hiding a sidebar entry keeps Command-K available.
+
+## Paseo 0.14 agent integration
+
+`vitals_host_snapshot` exposes host and Docker health without process environments or command lines. Agent enumeration now follows every page, including hosts with more than 200 sessions.
+
+Requires Paseo **0.14.0 or newer**. Agent tools are scoped to interactive Claude
+and Codex sessions; history-only opens receive none. They become available on
+the next idle session open after install or reload. The agent label
+`plugin-tools/enabled: "false"` opts a session out. Existing plugin data and
+settings are retained.
 
 ## Other plugins
 

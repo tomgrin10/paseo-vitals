@@ -29,17 +29,21 @@ function formatPercent(value: number | null): string {
   return value === null ? "sampling…" : `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
-function tone(theme: Theme, value: number): string {
-  if (value >= 90) return theme.colors.statusDanger;
-  if (value >= 70) return theme.colors.statusWarning;
+type Thresholds = { warnAt: number; dangerAt: number };
+
+const defaultThresholds: Thresholds = { warnAt: 70, dangerAt: 90 };
+
+function tone(theme: Theme, value: number, { warnAt, dangerAt }: Thresholds): string {
+  if (value >= dangerAt) return theme.colors.statusDanger;
+  if (value >= warnAt) return theme.colors.statusWarning;
   return theme.colors.accent;
 }
 
-function Bar({ theme, value }: { theme: Theme; value: number }) {
+function Bar({ theme, value, thresholds = defaultThresholds }: { theme: Theme; value: number; thresholds?: Thresholds }) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
     <View style={{ height: 5, borderRadius: 3, overflow: "hidden", backgroundColor: theme.colors.surface2 }}>
-      <View style={{ width: `${clamped}%`, height: 5, backgroundColor: tone(theme, clamped) }} />
+      <View style={{ width: `${clamped}%`, height: 5, backgroundColor: tone(theme, clamped, thresholds) }} />
     </View>
   );
 }
@@ -50,6 +54,7 @@ function Card({
   value,
   detail,
   percent,
+  thresholds,
   compact,
 }: {
   theme: Theme;
@@ -57,6 +62,7 @@ function Card({
   value: string;
   detail: string;
   percent?: number;
+  thresholds?: Thresholds;
   compact: boolean;
 }) {
   return (
@@ -79,7 +85,7 @@ function Card({
       <Text style={{ color: theme.colors.foreground, fontSize: 21, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
         {value}
       </Text>
-      {percent !== undefined ? <Bar theme={theme} value={percent} /> : null}
+      {percent !== undefined ? <Bar theme={theme} value={percent} thresholds={thresholds} /> : null}
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>{detail}</Text>
     </View>
   );
@@ -246,6 +252,8 @@ export function VitalsSurface({ theme, host, layout, navigation }: PluginSurface
               label="RAM"
               value={`${formatBytes(data.memory.usedBytes)} / ${formatBytes(data.memory.totalBytes)}`}
               percent={memoryPercent}
+              // Used RAM is normal on Linux and macOS; warn only as available memory runs low.
+              thresholds={{ warnAt: 85, dangerAt: 95 }}
               detail={`${formatBytes(data.memory.availableBytes)} available`}
             />
             <Card

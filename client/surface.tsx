@@ -269,7 +269,7 @@ export function VitalsSurface({ theme, host, layout, navigation }: PluginSurface
           <Section
             theme={theme}
             title="Memory detail"
-            note="Linux available memory already includes reclaimable cache; these detail values intentionally overlap."
+            note="Available memory already includes reclaimable cache; these detail values intentionally overlap."
           >
             <MemoryDetail theme={theme} data={data} compact={layout.compact} />
           </Section>
@@ -364,7 +364,9 @@ export function VitalsSurface({ theme, host, layout, navigation }: PluginSurface
           <Section theme={theme} title="Storage">
             <View style={{ padding: 14, gap: 8 }}>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Text style={{ color: theme.colors.foreground, fontWeight: "600", flex: 1 }}>Root filesystem</Text>
+                <Text style={{ color: theme.colors.foreground, fontWeight: "600", flex: 1 }}>
+                  {data.disk.path === "/" ? "Root filesystem" : data.disk.path}
+                </Text>
                 <Text style={{ color: theme.colors.foreground, fontVariant: ["tabular-nums"] }}>
                   {formatBytes(data.disk.usedBytes)} / {formatBytes(data.disk.totalBytes)}
                 </Text>

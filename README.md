@@ -5,27 +5,13 @@
 [![Paseo](https://img.shields.io/badge/Paseo-%E2%89%A5%200.14.0-8A63D2?style=for-the-badge)](https://paseo.sh)
 [![License](https://img.shields.io/github/license/tomgrin10/paseo-vitals?style=for-the-badge&color=2563eb)](LICENSE)
 
-A small Paseo sidebar dashboard for answering one question: how is this development VM doing?
+A sidebar dashboard that answers one question: how is this machine doing?
 
 ![Host vitals in Paseo showing live CPU, RAM, Docker, and per-agent memory usage](docs/images/host-vitals.png)
 
 Live usage on a Linux Paseo host. Private host addresses are redacted.
 
-It shows:
-
-- host CPU, load, uptime, RAM detail, swap, and root-disk usage;
-- Paseo daemon/plugin RSS separately from agent process trees;
-- per-agent RSS, CPU, process count, provider, and status;
-- Docker container CPU, cgroup memory, state, PIDs, network I/O, and block I/O;
-- the host's largest processes by RSS.
-
-The plugin reads Linux `/proc` directly and invokes `docker stats` at most once per cached refresh.
-It reads only the `PASEO_AGENT_ID` environment entry needed to attribute a process tree; command
-lines and other process environment values are never returned to the client.
-
 ## Install
-
-Install from npm using the latest Paseo release:
 
 ```sh
 paseo plugin install paseo-vitals
@@ -33,44 +19,41 @@ paseo plugin install paseo-vitals
 
 ## Use
 
-Open **Host vitals** from Paseo's sidebar. The dashboard refreshes every five seconds while mounted.
-Docker failure is non-fatal, and process-level detail degrades gracefully on non-Linux hosts.
+Open **Host vitals** from the sidebar or Command Center. It refreshes every five seconds and shows:
+
+- Host CPU, load, uptime, RAM, swap and root disk
+- Memory of the Paseo daemon and plugins, separate from agent process trees
+- Memory, CPU, process count, provider and status for each agent
+- Docker containers with CPU, memory, PIDs, network and block I/O
+- The largest processes on the host
+
+Agents can read the same snapshot with `vitals_host_snapshot`.
+
+## How it works
+
+The plugin reads Linux `/proc` directly and calls `docker stats` at most once per refresh. From each process it reads only `PASEO_AGENT_ID`, to attribute it to an agent; command lines and other environment values never reach the client. Docker failures are non-fatal, and process detail degrades gracefully on non-Linux hosts.
 
 ## Development
 
 ```sh
 npm ci
 npm run verify
-paseo plugin install paseo-vitals
+paseo plugin install .
+paseo plugin reload vitals   # after changes
 ```
 
 ## License
 
 [MIT](LICENSE) © 2026 Tom Gringauz.
 
-## Navigation and display
-
-Open this plugin from Command-K or its sidebar entry. **Overview** and **Display settings** link the main view and settings directly, without opening the Plugins settings page. Hiding a sidebar entry keeps Command-K available.
-
-## Paseo 0.14 agent integration
-
-`vitals_host_snapshot` exposes host and Docker health without process environments or command lines. Agent enumeration now follows every page, including hosts with more than 200 sessions.
-
-Requires Paseo **0.14.0 or newer**. Agent tools are scoped to interactive Claude
-and Codex sessions; history-only opens receive none. They become available on
-the next idle session open after install or reload. The agent label
-`plugin-tools/enabled: "false"` opts a session out. Existing plugin data and
-settings are retained.
-
 ## Other plugins
 
 - [Defer](https://github.com/tomgrin10/paseo-defer) — Schedule messages for later delivery.
-- [Graphite](https://github.com/tomgrin10/paseo-graphite) — Graphite stacks and PR status.
-- [Smart Session](https://github.com/tomgrin10/paseo-smart-session) — Context compaction and usage insights.
-- [Session Guard](https://github.com/tomgrin10/paseo-session-guard) — Pause at session limits and continue after reset.
-- [Transfer](https://github.com/tomgrin10/paseo-transfer) — Copy or move workspaces between hosts.
-- [Transcript Search](https://github.com/tomgrin10/paseo-transcript-search) — Search conversations across connected hosts.
-- [Send to Paseo](https://github.com/tomgrin10/send-to-paseo) — Send GitHub and Graphite PRs to Paseo from Chrome.
-- [Dispatch](https://github.com/tomgrin10/paseo-dispatch) — Route tasks to existing workspaces (development preview).
-
 - [Follow-up](https://github.com/tomgrin10/paseo-follow-up) — Track workspace PRs, remaining tasks and completion.
+- [Graphite](https://github.com/tomgrin10/paseo-graphite) — Graphite stacks and PR status.
+- [Send to Paseo](https://github.com/tomgrin10/send-to-paseo) — Send GitHub and Graphite PRs to Paseo from Chrome.
+- [Session Guard](https://github.com/tomgrin10/paseo-session-guard) — Pause at session limits and continue after reset.
+- [Smart Session](https://github.com/tomgrin10/paseo-smart-session) — Context compaction and usage insights.
+- [Transcript Search](https://github.com/tomgrin10/paseo-transcript-search) — Search conversations across connected hosts.
+- [Transfer](https://github.com/tomgrin10/paseo-transfer) — Copy or move workspaces between hosts.
+- [Workspace Switcher](https://github.com/tomgrin10/paseo-switcher) — Arc-style Ctrl+Tab between recent workspaces.

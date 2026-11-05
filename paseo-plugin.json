@@ -1,6 +1,16 @@
 {
   "id": "vitals",
+  "name": "Vitals",
   "icon": "assets/icon.png",
+  "description": "How this machine is doing and who is using it: live CPU, RAM and disk meters in the sidebar, a dashboard that splits RAM between agents, Paseo and Docker, each agent's process tree, and a warning on the composer when RAM or disk is nearly full.",
+  "media": [
+    "docs/media/vitals-dashboard-dark.png",
+    "docs/media/vitals-flow.gif",
+    "docs/media/vitals-pressure.png",
+    "docs/media/vitals-agent-panel.png",
+    "docs/media/vitals-footer.png",
+    "docs/media/vitals-mobile.png"
+  ],
   "requirements": {
     "paseo": ">=0.14.0"
   }

@@ -1,7 +1,7 @@
 {
   "name": "paseo-vitals",
   "type": "module",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Live host meters, per-agent memory and process trees, Docker, and RAM/disk warnings for Paseo.",
   "repository": {

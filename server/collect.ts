@@ -5,7 +5,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
-import type { VitalsSnapshot } from "../shared/vitals.ts";
+import { diskPercent, share } from "../shared/pressure.ts";
+import type { AgentProcess, AgentTree, VitalsSnapshot } from "../shared/vitals.ts";
+import { fixture } from "./fixture.ts";
 
 type PaseoApi = PluginHandlerContext["paseo"];
 type PaseoAgent = Awaited<ReturnType<PaseoApi["agents"]["list"]>>["entries"][number]["agent"];
@@ -32,8 +34,6 @@ interface CpuSample {
 }
 
 let previousSample: CpuSample | null = null;
-let cached: { at: number; value: VitalsSnapshot } | null = null;
-let inflight: Promise<VitalsSnapshot> | null = null;
 
 export function parseByteSize(value: string): number {
   const match = value.trim().match(/^([\d.]+)\s*([kmgtpe]?i?b)?$/i);
@@ -173,24 +173,43 @@ async function attachAgentIds(rows: ProcessRow[], paseoPids: Set<number>): Promi
   }
 }
 
-function readSystemCpu(): { totalTicks: number; idleTicks: number } {
-  const cpus = os.cpus();
+/**
+ * Linux: the aggregate line of /proc/stat. iowait counts as idle; steal counts as busy, since on a
+ * VM it is CPU time the guest wanted and did not get. os.cpus() omits both.
+ */
+export function parseProcStatCpu(text: string): { totalTicks: number; idleTicks: number } | null {
+  const line = text.split("\n", 1)[0] ?? "";
+  if (!line.startsWith("cpu ")) return null;
+  const [user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0, steal = 0] = line
+    .trim().split(/\s+/).slice(1).map(Number);
+  return { idleTicks: idle + iowait, totalTicks: user + nice + system + idle + iowait + irq + softirq + steal };
+}
+
+export async function readSystemCpu(): Promise<{ totalTicks: number; idleTicks: number }> {
+  if (process.platform === "linux") {
+    try {
+      const parsed = parseProcStatCpu(await fs.readFile("/proc/stat", "utf8"));
+      if (parsed) return parsed;
+    } catch {
+      // Fall back to os.cpus below.
+    }
+  }
   let totalTicks = 0;
   let idleTicks = 0;
-  for (const cpu of cpus) {
+  for (const cpu of os.cpus()) {
     idleTicks += cpu.times.idle;
     totalTicks += Object.values(cpu.times).reduce((sum, value) => sum + value, 0);
   }
   return { totalTicks, idleTicks };
 }
 
-function percent(value: number): number {
+export function percent(value: number): number {
   return Math.max(0, Math.round(value * 10) / 10);
 }
 
-function cpuValues(rows: ProcessRow[]) {
+async function cpuValues(rows: ProcessRow[]) {
   const now = Date.now();
-  const system = readSystemCpu();
+  const system = await readSystemCpu();
   const processTicks = new Map(rows.map((row) => [row.pid, row.cpuTicks]));
   const sample: CpuSample = { ...system, processTicks, at: now };
   const previous = previousSample;
@@ -226,7 +245,7 @@ function sumCpu(rows: ProcessRow[], byPid: Map<number, number>): number | null {
   return found ? percent(total) : null;
 }
 
-async function readMemory() {
+export async function readMemory() {
   if (process.platform === "linux") {
     return parseMeminfo(await fs.readFile("/proc/meminfo", "utf8"));
   }
@@ -244,7 +263,7 @@ async function readMemory() {
   };
 }
 
-async function readDisk(): Promise<VitalsSnapshot["disk"]> {
+export async function readDisk(): Promise<VitalsSnapshot["disk"]> {
   try {
     const stats = await fs.statfs("/");
     const totalBytes = stats.blocks * stats.bsize;
@@ -255,7 +274,8 @@ async function readDisk(): Promise<VitalsSnapshot["disk"]> {
       totalBytes,
       usedBytes,
       availableBytes,
-      usedPercent: totalBytes > 0 ? percent(usedBytes / totalBytes * 100) : 0,
+      // Like df: blocks reserved for root count as neither used nor available.
+      usedPercent: percent(diskPercent({ usedBytes, availableBytes })),
     };
   } catch {
     return { path: "/", totalBytes: 0, usedBytes: 0, availableBytes: 0, usedPercent: 0 };
@@ -350,21 +370,49 @@ async function readDocker(): Promise<VitalsSnapshot["docker"]> {
   }
 }
 
+interface ProcessCollection {
+  at: number;
+  rows: ProcessRow[];
+  byPid: Map<number, number>;
+  hostCpu: number | null;
+  daemonPid: number | null;
+  paseoPids: Set<number>;
+}
+
+let processCache: ProcessCollection | null = null;
+let processInflight: Promise<ProcessCollection> | null = null;
+
+async function collectProcessesUncached(): Promise<ProcessCollection> {
+  const rows = await readProcesses();
+  const cpu = await cpuValues(rows);
+  const daemonPid = findDaemonPid(rows);
+  const paseoPids = descendantsOf(daemonPid, rows);
+  await attachAgentIds(rows, paseoPids);
+  return { at: Date.now(), rows, byPid: cpu.byPid, hostCpu: cpu.host, daemonPid, paseoPids };
+}
+
+/** All of /proc, read at most once per CACHE_MS however many views ask. */
+function collectProcesses(): Promise<ProcessCollection> {
+  if (processCache && Date.now() - processCache.at < CACHE_MS) return Promise.resolve(processCache);
+  processInflight ??= collectProcessesUncached()
+    .then((value) => (processCache = value))
+    .finally(() => { processInflight = null; });
+  return processInflight;
+}
+
 async function collectUncached(agents: PaseoAgent[]): Promise<VitalsSnapshot> {
   const warnings: string[] = [];
-  const [rows, memory, disk, docker] = await Promise.all([
-    readProcesses(),
+  const [processes, memory, disk, docker] = await Promise.all([
+    collectProcesses(),
     readMemory(),
     readDisk(),
     readDocker(),
   ]);
-  const cpu = cpuValues(rows);
-  const daemonPid = findDaemonPid(rows);
-  const paseoPids = descendantsOf(daemonPid, rows);
-  await attachAgentIds(rows, paseoPids);
+  const { rows, daemonPid, paseoPids } = processes;
+  const cpu = { host: processes.hostCpu, byPid: processes.byPid };
 
-  if (process.platform !== "linux") warnings.push("Per-process and agent memory require a Linux host.");
-  if (daemonPid === null) warnings.push("The Paseo daemon process could not be identified.");
+  if (process.platform !== "linux") warnings.push("Per-process and agent memory need a Linux host.");
+  if (daemonPid === null && process.platform === "linux") warnings.push("The Paseo daemon process could not be identified.");
 
   const paseoRows = rows.filter((row) => paseoPids.has(row.pid));
   const coreRows = paseoRows.filter((row) => row.agentId === null);
@@ -382,6 +430,7 @@ async function collectUncached(agents: PaseoAgent[]): Promise<VitalsSnapshot> {
     return {
       id,
       title: agent?.title ?? null,
+      workspaceId: agent?.workspaceId ?? null,
       provider: agent?.provider ?? "unknown",
       status: agent?.status ?? "running",
       rssBytes: group.reduce((sum, row) => sum + row.rssBytes, 0),
@@ -431,7 +480,12 @@ async function collectUncached(agents: PaseoAgent[]): Promise<VitalsSnapshot> {
   };
 }
 
+let cached: { at: number; value: VitalsSnapshot } | null = null;
+let inflight: Promise<VitalsSnapshot> | null = null;
+
 export async function collectVitals(agents: PaseoAgent[]): Promise<VitalsSnapshot> {
+  const staged = fixture();
+  if (staged) return staged.snapshot(agents);
   const now = Date.now();
   if (cached && now - cached.at < CACHE_MS) return cached.value;
   if (inflight) return inflight;
@@ -444,4 +498,56 @@ export async function collectVitals(agents: PaseoAgent[]): Promise<VitalsSnapsho
       inflight = null;
     });
   return inflight;
+}
+
+export const AGENT_PROCESS_LIMIT = 40;
+
+/**
+ * Orders one agent's processes as a tree (parents before children, siblings by memory) and caps
+ * the list. Roots are processes whose parent is not in the group.
+ */
+export function treeOf(group: readonly { pid: number; ppid: number; name: string; rssBytes: number; cpuPercent: number | null }[], limit = AGENT_PROCESS_LIMIT): { processes: AgentProcess[]; hiddenCount: number } {
+  const pids = new Set(group.map((row) => row.pid));
+  const children = new Map<number, typeof group[number][]>();
+  const roots: typeof group[number][] = [];
+  for (const row of group) {
+    if (pids.has(row.ppid) && row.ppid !== row.pid) {
+      const list = children.get(row.ppid) ?? [];
+      list.push(row);
+      children.set(row.ppid, list);
+    } else roots.push(row);
+  }
+  const bySize = (a: { rssBytes: number }, b: { rssBytes: number }) => b.rssBytes - a.rssBytes;
+  const ordered: AgentProcess[] = [];
+  const seen = new Set<number>();
+  const visit = (row: typeof group[number], depth: number) => {
+    if (seen.has(row.pid)) return;
+    seen.add(row.pid);
+    ordered.push({ pid: row.pid, name: row.name, depth, rssBytes: row.rssBytes, cpuPercent: row.cpuPercent });
+    for (const child of [...(children.get(row.pid) ?? [])].sort(bySize)) visit(child, depth + 1);
+  };
+  for (const root of [...roots].sort(bySize)) visit(root, 0);
+  return { processes: ordered.slice(0, limit), hiddenCount: Math.max(0, ordered.length - limit) };
+}
+
+/** One agent's process tree from the shared /proc collection; never starts Docker. */
+export async function collectAgentTree(agentId: string): Promise<AgentTree> {
+  const staged = fixture();
+  if (staged) return staged.agentTree(agentId);
+  const [processes, memory] = await Promise.all([collectProcesses(), readMemory()]);
+  const group = processes.rows.filter((row) => row.agentId === agentId && processes.paseoPids.has(row.pid));
+  const rssBytes = group.reduce((sum, row) => sum + row.rssBytes, 0);
+  const tree = treeOf(group.map((row) => ({ ...row, cpuPercent: processes.byPid.get(row.pid) ?? null })));
+  const warnings: string[] = [];
+  if (process.platform !== "linux") warnings.push("Per-process detail needs a Linux host.");
+  return {
+    capturedAt: new Date().toISOString(),
+    agentId,
+    rssBytes,
+    cpuPercent: sumCpu(group, processes.byPid),
+    processCount: group.length,
+    shareOfUsedPercent: share(rssBytes, memory.usedBytes),
+    ...tree,
+    warnings,
+  };
 }

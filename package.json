@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.2.0",
   "license": "MIT",
-  "description": "A focused host, Paseo process, agent, and Docker monitor for Paseo.",
+  "description": "Live host meters, per-agent memory and process trees, Docker, and RAM/disk warnings for Paseo.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tomgrin10/paseo-vitals.git"
@@ -25,11 +25,12 @@
     "index.server.ts",
     "client/",
     "server/",
-    "shared/"
+    "shared/",
+    "docs/media/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types server/collect.test.ts",
+    "test": "node --test --experimental-strip-types server/collect.test.ts tests/*.test.ts",
     "verify": "npm run typecheck && npm test && node --test --experimental-strip-types agent-tools.test.mjs && node --test native-tools.test.mjs"
   },
   "devDependencies": {

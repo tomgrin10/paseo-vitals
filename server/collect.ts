@@ -261,7 +261,9 @@ export function parseDarwinSwapUsage(text: string): { swapTotalBytes: number; sw
   return { swapTotalBytes, swapUsedBytes: Math.round(mib("used")) };
 }
 
-async function readDarwinMemory(): Promise<NonNullable<Awaited<ReturnType<typeof readMemory>>>> {
+type HostMemory = VitalsSnapshot["memory"];
+
+async function readDarwinMemory(): Promise<HostMemory> {
   const totalBytes = os.totalmem();
   const fallbackAvailable = os.freemem();
   try {
@@ -300,7 +302,7 @@ async function readDarwinMemory(): Promise<NonNullable<Awaited<ReturnType<typeof
   };
 }
 
-export async function readMemory() {
+export async function readMemory(): Promise<HostMemory> {
   if (process.platform === "linux") {
     return parseMeminfo(await fs.readFile("/proc/meminfo", "utf8"));
   }

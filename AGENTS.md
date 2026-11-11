@@ -10,6 +10,8 @@
 
 - `index.client.tsx` and `index.server.ts` wire contributions and RPC handlers.
 - `client/` is React Native UI, `server/` owns Linux `/proc` and Docker collection, and `shared/` contains cross-runtime contracts.
+- The meters (footer, pill, popover) share one `client/live.ts` store per installation. On Paseo 0.16 (`client.subscribe` exists) it subscribes to `vitals.pulse-stream`. The daemon pushes a reading at once and one per 5 s sample. Watched means subscribed, and the last release ends it. A refused stream falls back to the 5 s `vitals.pulse` reads; a dropped one polls while it waits to subscribe again. 0.15 always reads.
+- `server/pulse.ts` samples only while someone looks: a subscriber, or an RPC read in the last minute. It never idles out under a subscriber and stops as soon as the last one leaves. The stream contract is a plain `{ name, input, event }` object, because 0.14/0.15 have no `defineSubscription`.
 - Treat process environment and command lines as sensitive. Return only the fields the UI needs.
 - Paseo supplies SDK, React, React Native, TanStack Query, and Zod at runtime. Keep those packages in `devDependencies`.
 - Never commit credentials, daemon state, logs, or local paths.

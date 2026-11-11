@@ -154,6 +154,18 @@ export const vitalsAgent = defineRpc({
   }),
 });
 
+/**
+ * The meters, pushed (Paseo 0.16 plugin subscriptions): one `vitals.pulse` reading on subscribe and
+ * one per sample while the subscription stays open. Built as the plain contract object
+ * `defineSubscription` returns, because 0.14/0.15 have no `defineSubscription` to call. Older hosts
+ * keep reading `vitals.pulse` every five seconds.
+ */
+export const vitalsPulseStream = {
+  name: "vitals.pulse-stream",
+  input: z.object({}),
+  event: vitalsPulse.output,
+} as const;
+
 export type VitalsPulse = z.infer<typeof vitalsPulse.output>;
 export type PulseSample = z.infer<typeof PulseSampleSchema>;
 export type AgentTree = z.infer<typeof vitalsAgent.output>;

@@ -51,9 +51,13 @@ export function createPulse(source: PulseSource = systemSource, clock: PulseCloc
   let cpuPercent: number | null = null;
   let ticking: Promise<void> | null = null;
 
+  const watchers = new Set<(pulse: VitalsPulse) => void>();
+  /** No subscriber, and no RPC read for a minute: nobody is looking. */
+  const idle = (now: number) => watchers.size === 0 && now - lastRead > PULSE_IDLE_MS;
+
   const tick = async () => {
     const now = clock.now();
-    if (now - lastRead > PULSE_IDLE_MS) return stop();
+    if (idle(now)) return stop();
     const [cpu, nextMemory] = await Promise.all([source.cpu(), source.memory()]);
     if (!disk || now - diskAt >= DISK_INTERVAL_MS) {
       disk = await source.disk();
@@ -80,6 +84,46 @@ export function createPulse(source: PulseSource = systemSource, clock: PulseCloc
     return ticking;
   };
 
+  /** Each sample, to every subscriber, as soon as it is taken. */
+  const sampleAndPush = async () => {
+    await step();
+    if (timer === null || watchers.size === 0) return;
+    const next = await current();
+    for (const listener of [...watchers]) listener(next);
+  };
+
+  const start = async () => {
+    if (timer !== null) return;
+    timer = clock.setInterval(() => void sampleAndPush(), PULSE_INTERVAL_MS);
+    await step();
+  };
+
+  async function current(): Promise<VitalsPulse> {
+    const staged = fixture();
+    if (staged) return staged.pulse();
+    const m = memory ?? await source.memory();
+    const d = disk ?? await source.disk();
+    const [one = 0, five = 0, fifteen = 0] = os.loadavg();
+    return {
+      capturedAt: new Date(history.at(-1)?.at ?? clock.now()).toISOString(),
+      hostname: os.hostname(),
+      uptimeSeconds: os.uptime(),
+      logicalCores: Math.max(1, os.cpus().length),
+      loadAverage: [one, five, fifteen],
+      cpuPercent,
+      memory: {
+        totalBytes: m.totalBytes,
+        usedBytes: m.usedBytes,
+        availableBytes: m.availableBytes,
+        swapTotalBytes: m.swapTotalBytes,
+        swapUsedBytes: m.swapUsedBytes,
+      },
+      disk: d,
+      intervalMs: PULSE_INTERVAL_MS,
+      history: [...history],
+    };
+  }
+
   function stop() {
     if (timer !== null) clock.clearInterval(timer);
     timer = null;
@@ -90,36 +134,32 @@ export function createPulse(source: PulseSource = systemSource, clock: PulseCloc
 
   return {
     get running() { return timer !== null; },
+    /** One reading for an RPC caller (Paseo 0.15, or a manual refresh); keeps sampling for a minute. */
     async read(): Promise<VitalsPulse> {
-      const staged = fixture();
-      if (staged) return staged.pulse();
+      if (fixture()) return current();
       lastRead = clock.now();
-      if (timer === null) {
-        timer = clock.setInterval(() => void step(), PULSE_INTERVAL_MS);
-        await step();
-      } else if (ticking) await ticking;
-      const m = memory ?? await source.memory();
-      const d = disk ?? await source.disk();
-      const [one = 0, five = 0, fifteen = 0] = os.loadavg();
-      return {
-        capturedAt: new Date(history.at(-1)?.at ?? clock.now()).toISOString(),
-        hostname: os.hostname(),
-        uptimeSeconds: os.uptime(),
-        logicalCores: Math.max(1, os.cpus().length),
-        loadAverage: [one, five, fifteen],
-        cpuPercent,
-        memory: {
-          totalBytes: m.totalBytes,
-          usedBytes: m.usedBytes,
-          availableBytes: m.availableBytes,
-          swapTotalBytes: m.swapTotalBytes,
-          swapUsedBytes: m.swapUsedBytes,
-        },
-        disk: d,
-        intervalMs: PULSE_INTERVAL_MS,
-        history: [...history],
+      if (timer === null) await start();
+      else if (ticking) await ticking;
+      return current();
+    },
+    /**
+     * A subscriber (Paseo 0.16 `vitals.pulse-stream`): gets a reading now and one per sample while
+     * it stays. The sampler never idles out under a subscriber; when the last one leaves it stops
+     * at once, unless an RPC read in the last minute still wants it.
+     */
+    watch(listener: (pulse: VitalsPulse) => void): () => void {
+      watchers.add(listener);
+      void (async () => {
+        if (!fixture()) { if (timer === null) await start(); else if (ticking) await ticking; }
+        else if (timer === null) timer = clock.setInterval(() => void sampleAndPush(), PULSE_INTERVAL_MS);
+        if (watchers.has(listener)) listener(await current());
+      })().catch(() => undefined);
+      return () => {
+        if (!watchers.delete(listener)) return;
+        if (idle(clock.now())) stop();
       };
     },
+    get watching() { return watchers.size; },
     stop,
   };
 }

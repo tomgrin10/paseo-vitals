@@ -2,20 +2,21 @@ import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plug
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 
 import { pressureLabel } from "./shared/pressure";
-import { vitalsPulse } from "./shared/vitals";
+import { vitalsPulse, vitalsPulseStream } from "./shared/vitals";
 import { agentPanel } from "./client/agent-panel";
 import { observeAgents } from "./client/agents";
 import { levelText } from "./client/charts";
 import { DEFAULT_DISPLAY, contributeDisplay, type Display } from "./client/display";
 import { footerItem } from "./client/footer";
 import { Chip } from "./client/kit";
-import { createLive, useLive } from "./client/live";
+import { PULSE_POLL_MS, createLive, pulseStreamOf, useLive } from "./client/live";
 import { contributePressurePill } from "./client/pill";
 import { sidebarVisibility } from "./client/sidebar-visibility";
 import { AGENT_PANEL_ID, dashboard } from "./client/surface";
 
 export default function contribute(client: PluginClientContext) {
-  const live = createLive(() => client.rpc(vitalsPulse, {}));
+  // Paseo 0.16 pushes the meters (`client.subscribe`); older hosts read them every five seconds.
+  const live = createLive(() => client.rpc(vitalsPulse, {}), PULSE_POLL_MS, pulseStreamOf(client, vitalsPulseStream));
   let display: Display = DEFAULT_DISPLAY;
 
   const removeScreen = client.addScreen({ id: "dashboard", title: "Host vitals", Component: dashboard(client, live) });

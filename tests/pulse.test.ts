@@ -89,3 +89,35 @@ test("an agent's processes come back as a tree, biggest branches first, capped",
   assert.equal(capped.processes.length, 2);
   assert.equal(capped.hiddenCount, 3);
 });
+
+test("a subscriber gets a reading now and one per sample, and keeps the sampler alive", async () => {
+  const time = fakeClock();
+  const { source } = fakeSource();
+  const pulse = createPulse(source, time.clock);
+  const seen: number[] = [];
+  const release = pulse.watch((next) => seen.push(next.history.length));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(time.active(), true, "subscribing starts the sampler");
+  assert.deepEqual(seen, [1], "a reading at once");
+  await time.advance(PULSE_INTERVAL_MS);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(seen, [1, 2], "one push per sample");
+  for (let i = 0; i < 20; i += 1) await time.advance(PULSE_INTERVAL_MS);
+  assert.equal(time.active(), true, "no idle stop while subscribed, however long");
+  release();
+  assert.equal(time.active(), false, "the last release stops it at once");
+  assert.equal(pulse.watching, 0);
+});
+
+test("releasing the stream leaves a recent RPC reader its minute", async () => {
+  const time = fakeClock();
+  const { source } = fakeSource();
+  const pulse = createPulse(source, time.clock);
+  const release = pulse.watch(() => undefined);
+  await pulse.read();
+  release();
+  assert.equal(time.active(), true, "an RPC read a moment ago still wants samples");
+  await time.advance(PULSE_IDLE_MS + PULSE_INTERVAL_MS);
+  assert.equal(time.active(), false, "then it idles out as before");
+});

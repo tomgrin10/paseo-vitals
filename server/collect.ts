@@ -245,9 +245,69 @@ function sumCpu(rows: ProcessRow[], byPid: Map<number, number>): number | null {
   return found ? percent(total) : null;
 }
 
-export async function readMemory() {
+/** Parses `memory_pressure -Q` lines such as `System-wide memory free percentage: 42%`. */
+export function parseMemoryPressureFreePercent(text: string): number | null {
+  const match = /free percentage:\s*(\d+)/.exec(text);
+  if (!match) return null;
+  const freePct = Number(match[1]);
+  return Number.isFinite(freePct) && freePct >= 0 && freePct <= 100 ? freePct : null;
+}
+
+/** Parses `sysctl -n vm.swapusage` (`total = 4096.00M  used = 3052.69M  free = 1043.31M`). */
+export function parseDarwinSwapUsage(text: string): { swapTotalBytes: number; swapUsedBytes: number } | null {
+  const mib = (key: string) => Number(new RegExp(`${key} = ([\\d.]+)M`).exec(text)?.[1] ?? 0) * 1024 ** 2;
+  const swapTotalBytes = Math.round(mib("total"));
+  if (!swapTotalBytes) return null;
+  return { swapTotalBytes, swapUsedBytes: Math.round(mib("used")) };
+}
+
+type HostMemory = VitalsSnapshot["memory"];
+
+async function readDarwinMemory(): Promise<HostMemory> {
+  const totalBytes = os.totalmem();
+  const fallbackAvailable = os.freemem();
+  try {
+    const [pressure, swap] = await Promise.all([
+      execFileAsync("memory_pressure", ["-Q"], { timeout: 5_000 }),
+      execFileAsync("sysctl", ["-n", "vm.swapusage"], { timeout: 5_000 }).catch(() => ({ stdout: "" as string | Buffer })),
+    ]);
+    const freePct = parseMemoryPressureFreePercent(String(pressure.stdout ?? ""));
+    if (freePct !== null) {
+      const availableBytes = Math.round(totalBytes * (freePct / 100));
+      const usedBytes = Math.max(0, totalBytes - availableBytes);
+      const swapUsage = parseDarwinSwapUsage(String(swap.stdout ?? ""));
+      return {
+        totalBytes,
+        usedBytes,
+        availableBytes,
+        freeBytes: availableBytes,
+        cacheBytes: 0,
+        anonymousBytes: 0,
+        swapTotalBytes: swapUsage?.swapTotalBytes ?? 0,
+        swapUsedBytes: swapUsage?.swapUsedBytes ?? 0,
+      };
+    }
+  } catch {
+    // Fall back when memory_pressure is missing or errors.
+  }
+  return {
+    totalBytes,
+    usedBytes: totalBytes - fallbackAvailable,
+    availableBytes: fallbackAvailable,
+    freeBytes: fallbackAvailable,
+    cacheBytes: 0,
+    anonymousBytes: 0,
+    swapTotalBytes: 0,
+    swapUsedBytes: 0,
+  };
+}
+
+export async function readMemory(): Promise<HostMemory> {
   if (process.platform === "linux") {
     return parseMeminfo(await fs.readFile("/proc/meminfo", "utf8"));
+  }
+  if (process.platform === "darwin") {
+    return readDarwinMemory();
   }
   const totalBytes = os.totalmem();
   const availableBytes = os.freemem();

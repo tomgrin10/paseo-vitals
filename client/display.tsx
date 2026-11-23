@@ -1,3 +1,4 @@
+import { watchSettings } from "./settings-feed/index";
 import type { PluginClientContext, PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useSettings } from "@getpaseo/plugin/client";
 import { SettingsAction, SettingsCard, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
@@ -5,7 +6,7 @@ import { useEffect } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import type { z } from "zod";
 
-import { displayPreferences, displayRpc } from "../shared/display";
+import { displayFeed, displayPreferences, displayRpc } from "../shared/display";
 
 export type Display = z.infer<typeof displayPreferences.schema>;
 export const DEFAULT_DISPLAY: Display = { showSidebar: true, showFooter: true, showPressurePill: true };
@@ -55,7 +56,7 @@ function DisplaySettings({ theme }: PluginSurfaceProps) {
 
 /**
  * The Display settings screen, plus the saved values for code outside React. Settings
- * notifications reach mounted screens; a slow poll picks up changes made on other clients.
+ * notifications reach mounted screens; a feed carries changes made on other clients.
  */
 export function contributeDisplay(client: PluginClientContext, apply: (values: Display) => void) {
   const removeSettings = client.addSettingsScreen({ id: "display", title: "Display", icon: "PanelLeft", Component: DisplaySettings });
@@ -68,29 +69,23 @@ export function contributeDisplay(client: PluginClientContext, apply: (values: D
     onSelect({ openSettings }) { openSettings("display"); },
   });
   let disposed = false;
-  let pending = false;
   let generation = 0;
   const update = (values: Display) => { generation += 1; apply(values); };
   listeners.add(update);
-  const refresh = async () => {
-    if (disposed || pending) return;
-    pending = true;
-    const currentGeneration = generation;
-    try {
-      const result = await client.rpc(displayRpc.read, {});
-      if (!disposed && generation === currentGeneration && result.status === "ready") {
+  const feed = watchSettings({
+    client, contract: displayFeed,
+    revision: () => generation,
+    read: () => client.rpc(displayRpc.read, {}),
+    apply: result => {
+      if (!disposed && result.status === "ready") {
         const parsed = displayPreferences.schema.safeParse(result.values);
         if (parsed.success) apply(parsed.data);
       }
-    } catch {
-      // Keep the last valid preference through temporary disconnects.
-    } finally { pending = false; }
-  };
-  void refresh();
-  const timer = setInterval(() => void refresh(), 15_000);
+    },
+  });
   return () => {
     disposed = true;
-    clearInterval(timer);
+    feed.stop();
     listeners.delete(update);
     removeSettings();
     removeCommand();

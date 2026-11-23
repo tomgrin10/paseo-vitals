@@ -1,4 +1,5 @@
-import { displayPreferences } from "./shared/display";
+import { registerSettingsFeed } from "./server/settings-feed/index";
+import { displayFeed, displayPreferences } from "./shared/display";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 
 import { collectAgentTree } from "./server/collect.ts";
@@ -7,7 +8,7 @@ import { createPulse } from "./server/pulse.ts";
 import { vitalsAgent, vitalsPulse, vitalsPulseStream, vitalsSnapshot } from "./shared/vitals.ts";
 
 export default function contribute(server: PluginServerContext) {
-  server.registerSettings(displayPreferences);
+  const stopDisplayFeed = registerSettingsFeed(server, displayFeed, server.registerSettings(displayPreferences));
   const removeTools = contributeAgentTools(server);
   const pulse = createPulse();
   server.handle(vitalsSnapshot, (_input, { paseo }) => snapshot(paseo));
@@ -16,6 +17,7 @@ export default function contribute(server: PluginServerContext) {
   servePulseStream(server, pulse);
 
   return () => {
+    stopDisplayFeed();
     pulse.stop();
     removeTools();
   };

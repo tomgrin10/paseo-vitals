@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseByteSize, parseMeminfo } from "./collect.ts";
+import {
+  parseByteSize,
+  parseDarwinSwapUsage,
+  parseMeminfo,
+  parseMemoryPressureFreePercent,
+} from "./collect.ts";
 
 test("parseByteSize handles Docker's binary units", () => {
   assert.equal(parseByteSize("341.2MiB"), 357_774_131);
@@ -27,4 +32,22 @@ test("parseMeminfo exposes available, cache, anonymous, and swap usage", () => {
   assert.equal(memory.cacheBytes, 230_000 * 1024);
   assert.equal(memory.anonymousBytes, 310_000 * 1024);
   assert.equal(memory.swapUsedBytes, 150_000 * 1024);
+});
+
+test("parseMemoryPressureFreePercent reads quiet memory_pressure output", () => {
+  const text = [
+    "The system has 34359738368 (2097152 pages with a page size of 16384).",
+    "System-wide memory free percentage: 42%",
+  ].join("\n");
+  assert.equal(parseMemoryPressureFreePercent(text), 42);
+  assert.equal(parseMemoryPressureFreePercent("no gauge here"), null);
+});
+
+test("parseDarwinSwapUsage reads vm.swapusage", () => {
+  const text = "total = 4096.00M  used = 3052.69M  free = 1043.31M  (encrypted)";
+  assert.deepEqual(parseDarwinSwapUsage(text), {
+    swapTotalBytes: 4096 * 1024 ** 2,
+    swapUsedBytes: Math.round(3052.69 * 1024 ** 2),
+  });
+  assert.equal(parseDarwinSwapUsage(""), null);
 });
